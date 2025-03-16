@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>TreeOne File Sharing</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #loginSection, #mainSection { margin-bottom: 20px; }
+    #fileList, #statsDisplay { border: 1px solid #ccc; padding: 10px; max-height: 300px; overflow-y: auto; }
+    button { margin: 5px; }
+  </style>
+</head>
+<body>
+  <h1>TreeOne File Sharing</h1>
+  
+  <div id="loginSection">
+    <h2>Login</h2>
+    <input type="text" id="username" placeholder="Enter username" />
+    <button id="loginBtn">Login</button>
+    <div id="loginStatus"></div>
+  </div>
+  
+  <div id="mainSection" style="display: none;">
+    <div>
+      <span id="welcomeMsg"></span>
+      <button id="logoutBtn">Logout</button>
+    </div>
+    <h2>File Operations</h2>
+    <button id="listBtn">List Files</button>
+    <div id="fileList"></div>
+    
+    <h3>Upload File</h3>
+    <input type="file" id="uploadFile" />
+    <button id="uploadBtn">Upload</button>
+    
+    <h3>Download File</h3>
+    <input type="text" id="downloadFileName" placeholder="Enter filename to download" />
+    <button id="downloadBtn">Download</button>
+    
+    <h3>Delete File</h3>
+    <input type="text" id="deleteFileName" placeholder="Enter filename to delete" />
+    <button id="deleteBtn">Delete</button>
+    
+    <h3>Statistics</h3>
+    <button id="statsBtn">Show Download Stats</button>
+    <div id="statsDisplay"></div>
+  </div>
+  
+  <script>
+    // Helper function to send an XHR request
+    function xhrRequest(method, url, data, callback) {
+      var xhr = new XMLHttpRequest();
+      xhr.open(method, url, true);
+      xhr.withCredentials = true; // send cookies with requests
+      xhr.setRequestHeader("Content-Type", "text/plain;charset=UTF-8");
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+          callback(xhr);
+        }
+      };
+      xhr.send(data);
+    }
+    
+    // Login
+    document.getElementById("loginBtn").onclick = function() {
+      var uname = document.getElementById("username").value;
+      if (!uname) {
+        alert("Please enter a username");
+        return;
+      }
+      xhrRequest("POST", "/api/login", uname, function(xhr) {
+        if (xhr.status === 200) {
+          document.getElementById("loginStatus").innerHTML = "Logged in as " + uname;
+          document.getElementById("loginSection").style.display = "none";
+          document.getElementById("mainSection").style.display = "block";
+          document.getElementById("welcomeMsg").innerHTML = "Welcome! " + uname;
+        } else {
+          document.getElementById("loginStatus").innerHTML = "Login failed: " + xhr.responseText;
+        }
+      });
+    };
+    
+    // Logout
+    document.getElementById("logoutBtn").onclick = function() {
+      xhrRequest("DELETE", "/api/login", null, function(xhr) {
+        if (xhr.status === 200) {
+          alert("Logged out successfully");
+          location.reload();
+        } else {
+          alert("Logout failed: " + xhr.responseText);
+        }
+      });
+    };
+    
+    // List Files
+    document.getElementById("listBtn").onclick = function() {
+      xhrRequest("GET", "/api/list", null, function(xhr) {
+        if (xhr.status === 200) {
+          var files = JSON.parse(xhr.responseText);
+          var html = "<ul>";
+          for (var i = 0; i < files.length; i++) {
+            var f = files[i];
+            html += "<li>" + f.filename + " (" + f.size_mb + " MB) by " + f.owner + " on " + f.timestamp + "</li>";
+          }
+          html += "</ul>";
+          document.getElementById("fileList").innerHTML = html;
+        } else {
+          document.getElementById("fileList").innerHTML = "Error: " + xhr.responseText;
+        }
+      });
+    };
+    
+    // Upload File
+    document.getElementById("uploadBtn").onclick = function() {
+      var fileInput = document.getElementById("uploadFile");
+      if (fileInput.files.length === 0) {
+        alert("Please select a file to upload");
+        return;
+      }
+      var file = fileInput.files[0];
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var fileData = e.target.result;
+        var url = "/api/push?file=" + encodeURIComponent(file.name) + "&t=" + new Date().getTime();
+        xhrRequest("POST", url, fileData, function(xhr) {
+          if (xhr.status === 200) {
+            alert("File uploaded successfully");
+            document.getElementById("listBtn").click();
+          } else {
+            alert("Upload failed: " + xhr.responseText);
+          }
+        });
+      };
+      reader.readAsBinaryString(file);
+      fileInput.value = "";
+    };
+    
+    // Download File
+    document.getElementById("downloadBtn").onclick = function() {
+      var fname = document.getElementById("downloadFileName").value;
+      if (!fname) {
+        alert("Enter a filename to download");
+        return;
+      }
+      var xhr = new XMLHttpRequest();
+      var url = "/api/get?file=" + encodeURIComponent(fname);
+      xhr.open("GET", url, true);
+      xhr.withCredentials = true;
+      xhr.responseType = "arraybuffer";
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+          if (xhr.status === 200) {
+            var blob = new Blob([xhr.response], { type: "application/octet-stream" });
+            var link = document.createElement("a");
+            link.href = window.URL.createObjectURL(blob);
+            link.download = fname;
+            link.click();
+          } else {
+            alert("Download failed: " + xhr.responseText);
+          }
+        }
+      };
+      xhr.send(null);
+    };
+    
+    // Delete File
+    document.getElementById("deleteBtn").onclick = function() {
+      var fname = document.getElementById("deleteFileName").value;
+      if (!fname) {
+        alert("Enter a filename to delete");
+        return;
+      }
+      var url = "/api/delete?file=" + encodeURIComponent(fname);
+      xhrRequest("DELETE", url, null, function(xhr) {
+        if (xhr.status === 200) {
+          alert("File deleted successfully");
+          document.getElementById("listBtn").click();
+        } else {
+          alert("Delete failed: " + xhr.responseText);
+        }
+      });
+    };
+    
+    // Show Statistics
+    document.getElementById("statsBtn").onclick = function() {
+      xhrRequest("GET", "/api/stats", null, function(xhr) {
+        if (xhr.status === 200) {
+          var stats = JSON.parse(xhr.responseText);
+          var html = "<ul>";
+          for (var key in stats) {
+            if (key === "overall") {
+              html += "<li><strong>Overall:</strong> " + stats[key].downloads + " downloads, avg time: " + stats[key].avg_time.toFixed(3) + " sec</li>";
+            } else {
+              html += "<li>" + key + ": " + stats[key].downloads + " downloads, avg time: " + stats[key].avg_time.toFixed(3) + " sec</li>";
+            }
+          }
+          html += "</ul>";
+          document.getElementById("statsDisplay").innerHTML = html;
+        } else {
+          document.getElementById("statsDisplay").innerHTML = "Error: " + xhr.responseText;
+        }
+      });
+    };
+    
+  </script>
+</body>
+</html>
