@@ -1,5 +1,3 @@
-#  Assignment 2
-
 ## Part 1: Multi-threaded API web server
 
 ### Running the Web Server
